@@ -115,7 +115,7 @@ class RobocopyEngine:
         
         # Copy options
         cmd.extend([
-            '/COPYALL',    # Copy all file info (data, attributes, timestamps, security, owner, auditing)
+            '/COPY:DAT',   # Copy Data, Attributes, Timestamps (no admin rights required)
             '/DCOPY:DAT',  # Copy directory timestamps and attributes
             '/V',          # Verbose output
             '/ETA',        # Show estimated time of completion

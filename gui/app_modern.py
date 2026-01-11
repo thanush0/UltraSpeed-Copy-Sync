@@ -18,9 +18,12 @@ try:
     import ttkbootstrap as ttk
     from ttkbootstrap.constants import *
     try:
-        from ttkbootstrap.tooltip import ToolTip
-    except (ImportError, AttributeError):
         from ttkbootstrap.widgets import ToolTip
+    except (ImportError, AttributeError):
+        try:
+            from ttkbootstrap.tooltip import ToolTip
+        except:
+            ToolTip = None
     MODERN_THEME = True
 except ImportError:
     import tkinter.ttk as ttk
@@ -35,6 +38,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from engine.robocopy_engine import RobocopyEngine, RobocopyMode
 from engine.compression import CompressionEngine, CompressionFormat
 from engine.network_optimizer import NetworkOptimizer
+from engine.mtp_copy_handler import MTPCopyHandler
 from benchmark.speed_monitor import SpeedMonitor, SpeedChart
 
 
@@ -266,6 +270,10 @@ class UltraSpeedModernGUI:
         self.compression_engine = CompressionEngine(
             log_callback=self.log_message,
             progress_callback=self.update_compression_progress
+        )
+        self.mtp_handler = MTPCopyHandler(
+            log_callback=self.log_message,
+            progress_callback=self.update_progress
         )
         self.speed_monitor = SpeedMonitor()
         
@@ -905,7 +913,16 @@ class UltraSpeedModernGUI:
     
     def browse_source(self):
         """Browse for source directory with animation"""
-        # Create custom dialog with network device option
+        # Use enhanced device picker
+        from gui.device_picker import show_device_picker
+        path = show_device_picker(self.root, "Select Source Device", "source")
+        if path:
+            self.source_path.set(path)
+            self.log_message(f"✅ Source selected: {path}")
+            self.check_network_path()
+        return
+        
+        # OLD CODE - Fallback if device picker fails
         dialog = tk.Toplevel(self.root)
         dialog.title("Select Source")
         dialog.geometry("600x400")
@@ -1061,7 +1078,16 @@ class UltraSpeedModernGUI:
     
     def browse_destination(self):
         """Browse for destination directory"""
-        # Create custom dialog with network device option
+        # Use enhanced device picker
+        from gui.device_picker import show_device_picker
+        path = show_device_picker(self.root, "Select Destination Device", "destination")
+        if path:
+            self.dest_path.set(path)
+            self.log_message(f"✅ Destination selected: {path}")
+            self.check_network_path()
+        return
+        
+        # OLD CODE - Fallback if device picker fails
         dialog = tk.Toplevel(self.root)
         dialog.title("Select Destination")
         dialog.geometry("600x400")
@@ -1258,7 +1284,8 @@ class UltraSpeedModernGUI:
             messagebox.showerror("Error", "Please select both source and destination paths")
             return
         
-        if not os.path.exists(source):
+        # Validate source path (with MTP support)
+        if not self._validate_path(source):
             messagebox.showerror("Error", f"Source path does not exist:\n{source}")
             return
         
@@ -1331,6 +1358,38 @@ class UltraSpeedModernGUI:
         try:
             source = self.source_path.get()
             dest = self.dest_path.get()
+            
+            # Check if source is an MTP device
+            is_mtp_source = self._is_mtp_path(source)
+            is_mtp_dest = self._is_mtp_path(dest)
+            
+            if is_mtp_dest:
+                self.log_message("📱 Mobile device detected as DESTINATION")
+                self.log_message("Using MTP handler to copy TO mobile device...")
+                
+                # Copy TO MTP device
+                success = self.mtp_handler.copy_to_mtp(source, dest)
+                
+                if not success:
+                    raise Exception("Failed to copy to mobile device")
+                
+                self.log_message("✅ Successfully copied to mobile device!")
+                return
+            
+            if is_mtp_source:
+                self.log_message("📱 Mobile device detected as source")
+                self.log_message("Using MTP handler for two-stage copy process...")
+                
+                # Stage 1: Copy from MTP to temp folder
+                success, temp_or_error = self.mtp_handler.copy_from_mtp(source, dest)
+                
+                if not success:
+                    raise Exception(f"MTP copy failed: {temp_or_error}")
+                
+                # Stage 2: Copy from temp to final destination using Robocopy
+                temp_source = temp_or_error
+                self.log_message(f"⏳ Stage 2: Fast copy from staging to destination using Robocopy...")
+                source = temp_source  # Update source to temp folder
             
             # Check if compression is enabled
             if self.compression_enabled.get():
@@ -1657,6 +1716,37 @@ class UltraSpeedModernGUI:
             self.copy_mode.set(self.config['default_mode'])
     
     # Utilities
+    
+    def _is_mtp_path(self, path):
+        """Check if path is an MTP device path"""
+        path = path.strip()
+        return (path.startswith("Computer\\") or 
+                path.startswith("Computer/") or 
+                "::{" in path or
+                path.startswith("wpd://"))
+    
+    def _validate_path(self, path):
+        """Validate that a path exists (handles both regular paths and MTP devices)"""
+        import subprocess
+        
+        # Clean up the path - remove extra spaces
+        path = path.strip()
+        
+        # Standard file system path
+        if os.path.exists(path):
+            return True
+        
+        # Check if it's an MTP device path
+        # MTP paths are difficult to validate due to Windows limitations
+        # Allow any path that looks like an MTP device path
+        if self._is_mtp_path(path):
+            self.log_message(f"📱 Detected MTP device path: {path}")
+            self.log_message("Note: MTP path validation is limited. Operation will proceed.")
+            # For MTP devices, we can't reliably validate the full path
+            # Just accept it and let the copy operation handle errors
+            return True
+        
+        return False
     
     @staticmethod
     def format_bytes(bytes_val):
