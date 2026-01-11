@@ -1,0 +1,18 @@
+# UltraSpeed Copy - Python Dependencies
+
+# Core dependencies (required)
+# Note: tkinter comes with Python standard library
+
+# System resource monitoring (for auto-thread detection)
+psutil>=5.9.0         # CPU, memory, and disk detection
+
+# Modern UI theme (HIGHLY RECOMMENDED for best experience)
+ttkbootstrap>=1.10.1  # Modern themed tkinter widgets with animations
+
+# Optional dependencies for enhanced features
+matplotlib>=3.5.0     # For speed charts and benchmarking visualization
+numpy>=1.21.0         # Required by matplotlib
+
+# Development dependencies (optional)
+# pytest>=7.0.0       # For unit testing
+# pylint>=2.12.0      # For code quality checks
